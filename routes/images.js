@@ -90,19 +90,20 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     image.description = description || image.description;
     image.category = category || image.category;
 
+    // If user uploads a new image
     if (req.file) {
-      if (image.filename) {
-        const oldImagePath = path.join(__dirname, '../uploads', image.filename);
-        try {
-          await fs.unlink(oldImagePath);
-        } catch (unlinkError) {
-          console.error('Error deleting old image file:', unlinkError);
-        }
-      }
+      const filePath = path.join(__dirname, '../uploads', req.file.filename);
 
-      image.imageUrl = `/uploads/${req.file.filename}`;
+      // Upload NEW file to Cloudinary
+      const uploadResult = await cloudinary.uploader.upload(filePath);
+
+      // Replace old Cloudinary URL
+      image.imageUrl = uploadResult.secure_url;
       image.filename = req.file.filename;
       image.size = (req.file.size / 1024 / 1024).toFixed(2) + ' MB';
+
+      // Delete local temp file
+      await fs.unlink(filePath);
     }
 
     const updatedImage = await image.save();
