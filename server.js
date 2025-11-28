@@ -4,16 +4,51 @@ const cors = require("cors");
 const path = require("path");
 const mongoose = require("mongoose");
 
-const imageRoutes = require("./routes/images");   // CommonJS
-const authRoutes = require("./routes/auth");      // CommonJS
-const connectCloudinary = require("./config/cloudinary"); // CommonJS
+const imageRoutes = require("./routes/images");
+const authRoutes = require("./routes/auth");
+const connectCloudinary = require("./config/cloudinary");
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Connect MongoDB
+// ----------------------
+// 1. ALLOWED ORIGINS (TOP)
+// ----------------------
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://happytots.in",
+  "https://admin.happytots.in",
+  "https://happytots-admin.pages.dev"
+];
+
+// ----------------------
+// 2. CORS MIDDLEWARE (TOP, BEFORE ROUTES)
+// ----------------------
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("Not allowed by CORS: " + origin));
+      }
+    },
+    credentials: true,
+  })
+);
+
+// ----------------------
+// 3. JSON PARSER
+// ----------------------
+app.use(express.json());
+
+// ----------------------
+// 4. CONNECT MONGODB
+// ----------------------
 mongoose
   .connect(process.env.MONGODB_URI, {
     serverSelectionTimeoutMS: 5000,
@@ -21,46 +56,25 @@ mongoose
   .then(() => console.log("✔ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err.message));
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Cloudinary
+// ----------------------
+// 5. CLOUDINARY CONFIG
+// ----------------------
 connectCloudinary();
 
-// Static uploads folder
+// ----------------------
+// 6. STATIC FOLDER
+// ----------------------
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Routes
+// ----------------------
+// 7. ROUTES
+// ----------------------
 app.use("/api/images", imageRoutes);
 app.use("/api", authRoutes);
 
+// ----------------------
+// 8. START SERVER
+// ----------------------
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
 });
-
-
-// CORS Configuration
-
-const allowedOrigins = [
-  "http://localhost:5173",            // local admin panel
-  "https://happytots.in",             // main website
-  "https://admin.happytots.in",       // admin on subdomain (recommended)
-  "https://happytots-admin.pages.dev" // cloudflare pages default domain
-];
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like Postman)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS: " + origin));
-      }
-    },
-    credentials: true,
-  })
-);
