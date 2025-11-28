@@ -29,22 +29,27 @@ router.post('/upload', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send('No image uploaded.');
 
-    const { page, section, title, description, category } = req.body;
+    const { page, section, title, description, category, position } = req.body;
 
     filePath = path.join(__dirname, '../uploads', req.file.filename);
 
     // Upload to Cloudinary
-    const uploaded = await cloudinary.uploader.upload(filePath);
+    const uploaded = await cloudinary.uploader.upload(filePath, {
+      folder: "happyTots",
+    });
 
+    // Save to MongoDB
     const newImage = new Image({
       page: page?.toLowerCase(),
       section: section?.toLowerCase(),
       title,
       description,
       category,
+      position,
       imageUrl: uploaded.secure_url,
-      filename: req.file.filename,
-      size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB'
+      filename: uploaded.public_id, // IMPORTANT
+      size: (req.file.size / 1024 / 1024).toFixed(2) + ' MB',
+      dimensions: `${uploaded.width}x${uploaded.height}`
     });
 
     const saved = await newImage.save();
@@ -57,7 +62,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
 
   } catch (err) {
     console.error('Upload error:', err);
-    res.status(500).json({ success: false, message: 'Upload failed' });
+    res.status(500).json({ success: false, message: err.message });
 
   } finally {
     if (filePath) await fs.unlink(filePath).catch(() => {});
@@ -74,30 +79,16 @@ router.get('/getimages', async (req, res) => {
     if (section) filter.section = section.toLowerCase();
     if (category) filter.category = category;
 
-    // NORMAL SECTIONS → return only URLs
+    // NON-GALLERY: Return only URLs
     if (section !== "gallery") {
       const docs = await Image.find(filter).select("imageUrl -_id");
       const urls = docs.map(d => d.imageUrl);
-
       return res.json({ success: true, images: urls });
     }
 
-    // GALLERY → return full objects
+    // GALLERY: Full details
     const images = await Image.find(filter);
     res.json({ success: true, images });
-
-  } catch (err) {
-    console.error("Error fetching images:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/* ----------------------------- Get Single Image ----------------------------- */
-router.get('/:id', async (req, res) => {
-  try {
-    const img = await Image.findById(req.params.id);
-    if (!img) return res.status(404).json({ success: false, message: 'Not found' });
-    res.json({ success: true, image: img });
 
   } catch (err) {
     console.error("Fetch error:", err);
@@ -115,7 +106,6 @@ router.put('/:id', upload.single('image'), async (req, res) => {
 
     const { title, position, description, category, section, page } = req.body;
 
-    // Update text fields
     img.title = title ?? img.title;
     img.position = position ?? img.position;
     img.description = description ?? img.description;
@@ -123,16 +113,22 @@ router.put('/:id', upload.single('image'), async (req, res) => {
     img.section = section ? section.toLowerCase() : img.section;
     img.page = page ? page.toLowerCase() : img.page;
 
-    // If new file uploaded → replace Cloudinary image
+    // Replace image if uploaded new one
     if (req.file) {
       filePath = path.join(__dirname, '../uploads', req.file.filename);
 
+      // Remove old image from Cloudinary
+      await cloudinary.uploader.destroy(img.filename);
+
       // Upload new file
-      const uploaded = await cloudinary.uploader.upload(filePath);
+      const uploaded = await cloudinary.uploader.upload(filePath, {
+        folder: "happyTots",
+      });
 
       img.imageUrl = uploaded.secure_url;
-      img.filename = req.file.filename;
+      img.filename = uploaded.public_id;
       img.size = (req.file.size / 1024 / 1024).toFixed(2) + ' MB';
+      img.dimensions = `${uploaded.width}x${uploaded.height}`;
     }
 
     const updated = await img.save();
@@ -158,9 +154,10 @@ router.delete('/:id', async (req, res) => {
     const img = await Image.findByIdAndDelete(req.params.id);
     if (!img) return res.status(404).json({ success: false, message: 'Image not found' });
 
-    // local file is irrelevant (Cloudinary handles storage)
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(img.filename);
 
-    res.json({ success: true, message: 'Image deleted' });
+    res.json({ success: true, message: 'Image deleted successfully' });
 
   } catch (err) {
     console.error("Delete error:", err);
@@ -169,20 +166,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
-
-// router.get('/getimages', async (req, res) => {
-//   try {
-//     const { section } = req.query;
-
-//     // Optional filter based on `section`
-//     const filter = section ? { section } : {};
-
-//     // Only return imageUrl fields (and _id for keys if needed)
-//     const imgs = await Image.find(filter).select('imageUrl -_id');
-//     const images = imgs.map(img => img.imageUrl);
-//     res.json({ success: true, images });
-//   } catch (error) {
-//     console.error("Error fetching images:", error);
-//     res.status(500).json({ success: false, message: error.message });
-//   }
-// });

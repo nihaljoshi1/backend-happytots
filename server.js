@@ -1,31 +1,40 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const imageRoutes = require('./routes/images');
-const path = require('path');
-require('dotenv').config();
-const authRoutes = require('./routes/auth');
-const connectCloudinary = require('./config/cloudinary');
+const express = require("express");
+const dotenv = require("dotenv");
+const cors = require("cors");
+const path = require("path");
+const mongoose = require("mongoose");
 
-connectCloudinary();
+const imageRoutes = require("./routes/images");   // CommonJS
+const authRoutes = require("./routes/auth");      // CommonJS
+const connectCloudinary = require("./config/cloudinary"); // CommonJS
+
+dotenv.config();
+
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors()); 
+// Connect MongoDB
+mongoose
+  .connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+  })
+  .then(() => console.log("✔ MongoDB Connected"))
+  .catch((err) => console.error("❌ MongoDB Error:", err.message));
+
+// Middleware
+app.use(cors());
 app.use(express.json());
 
-// Serve static files from the 'uploads' directory (where images will be stored)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Cloudinary
+connectCloudinary();
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('Could not connect to MongoDB:', err));
+// Static uploads folder
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Use image routes
-app.use('/api/images', imageRoutes);
-app.use('/api', authRoutes);   // Use the authentication routes under /api
+// Routes
+app.use("/api/images", imageRoutes);
+app.use("/api", authRoutes);
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`🚀 Server running on port ${port}`);
 });
